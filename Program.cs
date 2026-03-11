@@ -20,7 +20,14 @@ class Program
             Console.WriteLine("7. Exit");
 
             Console.Write("Choose an option: ");
-            int choice = Convert.ToInt32(Console.ReadLine());
+            int choice;
+
+             if (!int.TryParse(Console.ReadLine(), out choice))
+            {
+                Console.WriteLine("Invalid input. Please enter a number.");
+                continue;
+            }
+
 
             switch (choice)
             {
