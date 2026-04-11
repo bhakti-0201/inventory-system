@@ -1,21 +1,25 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;
 using InventorySystem.Data;
 using InventorySystem.Models;
+using InventorySystem.Repositories;
 
 namespace InventorySystem.Services
 {
     public class InventoryService
     {
-        private readonly AppDbContext _context = new AppDbContext();
+        private readonly IProductRepository _repository;
+        private readonly AppDbContext _context;
 
         public InventoryService()
         {
             try
             {
+                _context = new AppDbContext();
                 _context.Database.CanConnect();
+                _repository = new ProductRepository(_context);
             }
             catch (Exception ex)
             {
@@ -23,7 +27,14 @@ namespace InventorySystem.Services
             }
         }
 
-        public void CheckStock()
+        // Constructor for dependency injection
+        public InventoryService(IProductRepository repository)
+        {
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _context = new AppDbContext();
+        }
+
+        public async Task CheckStockAsync()
         {
             try
             {
@@ -36,7 +47,7 @@ namespace InventorySystem.Services
                     return;
                 }
 
-                var product = _context.Products.FirstOrDefault(p => p.Id == id);
+                var product = await _repository.GetByIdAsync(id);
 
                 if (product != null)
                 {
@@ -55,13 +66,23 @@ namespace InventorySystem.Services
             {
                 Console.WriteLine("Invalid input format. Please enter a valid number.");
             }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"Database error: {ex.Message}");
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error checking stock: {ex.Message}");
             }
         }
 
-        public void AddProduct()
+        // Sync version for backward compatibility
+        public void CheckStock()
+        {
+            CheckStockAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task AddProductAsync()
         {
             try
             {
@@ -97,14 +118,12 @@ namespace InventorySystem.Services
                     Price = price
                 };
 
-                _context.Products.Add(product);
-                _context.SaveChanges();
-
-                Console.WriteLine($"Product added with ID {product.Id}");
+                var addedProduct = await _repository.AddAsync(product);
+                Console.WriteLine($"Product added with ID {addedProduct.Id}");
             }
-            catch (DbUpdateException ex)
+            catch (InvalidOperationException ex)
             {
-                Console.WriteLine($"Database error while adding product: {ex.InnerException?.Message ?? ex.Message}");
+                Console.WriteLine($"Database error: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -112,11 +131,17 @@ namespace InventorySystem.Services
             }
         }
 
-        public void ViewProducts()
+        // Sync version for backward compatibility
+        public void AddProduct()
+        {
+            AddProductAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task ViewProductsAsync()
         {
             try
             {
-                var products = _context.Products.ToList();
+                var products = await _repository.GetAllAsync();
 
                 if (!products.Any())
                 {
@@ -136,13 +161,23 @@ namespace InventorySystem.Services
                     Console.WriteLine("----------------------");
                 }
             }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"Database error: {ex.Message}");
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error retrieving products: {ex.Message}");
             }
         }
 
-        public void UpdateProduct()
+        // Sync version for backward compatibility
+        public void ViewProducts()
+        {
+            ViewProductsAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task UpdateProductAsync()
         {
             try
             {
@@ -155,7 +190,7 @@ namespace InventorySystem.Services
                     return;
                 }
 
-                var product = _context.Products.FirstOrDefault(p => p.Id == id);
+                var product = await _repository.GetByIdAsync(id);
 
                 if (product == null)
                 {
@@ -193,12 +228,12 @@ namespace InventorySystem.Services
                     Console.WriteLine("Invalid price. Keeping current value.");
                 }
 
-                _context.SaveChanges();
+                await _repository.UpdateAsync(product);
                 Console.WriteLine("Product updated successfully!");
             }
-            catch (DbUpdateException ex)
+            catch (InvalidOperationException ex)
             {
-                Console.WriteLine($"Database error while updating product: {ex.InnerException?.Message ?? ex.Message}");
+                Console.WriteLine($"Database error: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -206,7 +241,13 @@ namespace InventorySystem.Services
             }
         }
 
-        public void DeleteProduct()
+        // Sync version for backward compatibility
+        public void UpdateProduct()
+        {
+            UpdateProductAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task DeleteProductAsync()
         {
             try
             {
@@ -219,7 +260,7 @@ namespace InventorySystem.Services
                     return;
                 }
 
-                var product = _context.Products.FirstOrDefault(p => p.Id == id);
+                var product = await _repository.GetByIdAsync(id);
 
                 if (product == null)
                 {
@@ -236,14 +277,19 @@ namespace InventorySystem.Services
                     return;
                 }
 
-                _context.Products.Remove(product);
-                _context.SaveChanges();
-
-                Console.WriteLine("Product deleted successfully!");
+                bool deleted = await _repository.DeleteAsync(id);
+                if (deleted)
+                {
+                    Console.WriteLine("Product deleted successfully!");
+                }
+                else
+                {
+                    Console.WriteLine("Failed to delete product.");
+                }
             }
-            catch (DbUpdateException ex)
+            catch (InvalidOperationException ex)
             {
-                Console.WriteLine($"Database error while deleting product: {ex.InnerException?.Message ?? ex.Message}");
+                Console.WriteLine($"Database error: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -251,11 +297,17 @@ namespace InventorySystem.Services
             }
         }
 
-        public void LowStockAlert()
+        // Sync version for backward compatibility
+        public void DeleteProduct()
+        {
+            DeleteProductAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task LowStockAlertAsync()
         {
             try
             {
-                var lowStockProducts = _context.Products.Where(p => p.Quantity < 5).ToList();
+                var lowStockProducts = await _repository.GetLowStockProductsAsync(5);
 
                 Console.WriteLine("\nLow Stock Products (Quantity < 5)");
                 Console.WriteLine("----------------------------------");
@@ -275,10 +327,20 @@ namespace InventorySystem.Services
                     Console.WriteLine("-----------------------------");
                 }
             }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"Database error: {ex.Message}");
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error checking low stock: {ex.Message}");
             }
+        }
+
+        // Sync version for backward compatibility
+        public void LowStockAlert()
+        {
+            LowStockAlertAsync().GetAwaiter().GetResult();
         }
     }
 }
